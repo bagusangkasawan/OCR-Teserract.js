@@ -128,5 +128,3 @@ Proyek ini dibuat dan dikembangkan oleh:
 📧 bagusasp01@gmail.com  
 
 Copyright © 2025 Bagus Angkasawan Sumantri Putra
-
-Lisensi bebas digunakan untuk pembelajaran dan pengembangan non-komersial. Untuk penggunaan komersial, silakan hubungi developer terlebih dahulu.
