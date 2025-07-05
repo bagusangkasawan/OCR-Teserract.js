@@ -12,10 +12,9 @@ dotenv.config();
 const app = express();
 app.use(cors());
 app.use(express.json());
+app.use(express.static("public"));
 
-// configure multer for file uploads
 const upload = multer({ dest: "uploads/" });
-
 const TELEGRAM_TOKEN = process.env.TELEGRAM_TOKEN;
 
 app.post("/ocr", upload.single("image"), async (req, res) => {
@@ -23,7 +22,6 @@ app.post("/ocr", upload.single("image"), async (req, res) => {
 
   try {
     if (req.body.file_id) {
-      // 1. get file from Telegram
       const response = await fetch(`https://api.telegram.org/bot${TELEGRAM_TOKEN}/getFile?file_id=${req.body.file_id}`);
       const data = await response.json();
       if (!data.ok) throw new Error("getFile failed");
@@ -31,7 +29,6 @@ app.post("/ocr", upload.single("image"), async (req, res) => {
       const filePath = data.result.file_path;
       imageUrl = `https://api.telegram.org/file/bot${TELEGRAM_TOKEN}/${filePath}`;
     } else if (req.file) {
-      // file was uploaded
       imageUrl = path.resolve(req.file.path);
     } else {
       return res.status(400).json({ error: "No file_id or file uploaded" });
@@ -41,7 +38,6 @@ app.post("/ocr", upload.single("image"), async (req, res) => {
     const result = await worker.recognize(imageUrl);
     await worker.terminate();
 
-    // optionally delete uploaded file after OCR
     if (req.file) {
       fs.unlinkSync(req.file.path);
     }
