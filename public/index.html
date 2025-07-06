@@ -3,79 +3,267 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>OCR Test</title>
+  <title>OCR & Chatbot</title>
   <link
     href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css"
     rel="stylesheet"
   />
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+  <style>
+    .chat-window {
+      height: 400px;
+      overflow-y: auto;
+      border: 1px solid #ccc;
+      padding: 1rem;
+      background-color: #f8f9fa;
+    }
+    .chat-message {
+      margin-bottom: 1rem;
+    }
+    .chat-message.user {
+      text-align: right;
+    }
+    .chat-message .message-bubble {
+      display: inline-block;
+      padding: 0.5rem 1rem;
+      border-radius: 15px;
+      max-width: 80%;
+      text-align: left;
+    }
+    .chat-message.user .message-bubble {
+      background-color: #0d6efd;
+      color: white;
+    }
+    .chat-message.bot .message-bubble {
+      background-color: #e9ecef;
+      color: #212529;
+    }
+    .chat-message.bot .message-bubble h1,
+    .chat-message.bot .message-bubble h2,
+    .chat-message.bot .message-bubble h3 {
+        margin-top: 0.5rem;
+        margin-bottom: 0.5rem;
+    }
+    .chat-message.bot .message-bubble ul,
+    .chat-message.bot .message-bubble ol {
+        padding-left: 1.2rem;
+    }
+    .chat-message.bot .message-bubble pre {
+        background-color: #343a40;
+        color: #f8f9fa;
+        padding: 0.5rem;
+        border-radius: 5px;
+        white-space: pre-wrap;
+        word-wrap: break-word;
+    }
+    #result-container {
+        position: relative;
+    }
+    #ask-ai-btn {
+        position: absolute;
+        top: 10px;
+        right: 10px;
+    }
+  </style>
 </head>
 <body class="bg-light">
   <div class="container py-5">
-    <h1 class="mb-4">OCR Test</h1>
+    <div class="row">
+      <!-- Kolom OCR -->
+      <div class="col-md-6">
+        <h1 class="mb-4">1. Ekstrak Teks</h1>
+        <p>Unggah file Gambar (PNG, JPG) atau PDF untuk mengekstrak teks.</p>
+        <form id="ocrForm">
+          <div class="mb-3">
+            <label for="file" class="form-label">Upload Gambar atau PDF</label>
+            <input type="file" class="form-control" id="file" name="file" accept=".png,.jpg,.jpeg,.pdf" />
+          </div>
+           <div class="mb-3">
+            <label for="file_id" class="form-label">Atau masukkan Telegram File ID (Gambar atau PDF)</label>
+            <input type="text" class="form-control" id="file_id" name="file_id" />
+          </div>
+          <button type="submit" class="btn btn-primary">Proses OCR</button>
+        </form>
+        <div id="loadingOcr" class="mt-4 d-none">
+          <div class="spinner-border text-primary" role="status">
+            <span class="visually-hidden">Processing...</span>
+          </div>
+          <span class="ms-2">Sedang memproses OCR...</span>
+        </div>
+        <hr class="my-4" />
+        <h5>Hasil OCR:</h5>
+        <div id="result-container">
+            <pre id="result" class="bg-white p-3 border rounded" style="white-space: pre-wrap; word-wrap: break-word; min-height: 100px;"></pre>
+            <button id="ask-ai-btn" class="btn btn-sm btn-outline-primary d-none">Tanyakan ke AI</button>
+        </div>
+      </div>
 
-    <form id="ocrForm">
-      <div class="mb-3">
-        <label for="image" class="form-label">Upload Gambar</label>
-        <input type="file" class="form-control" id="image" name="image" />
+      <!-- Kolom Chatbot -->
+      <div class="col-md-6">
+        <h1 class="mb-4">2. Chatbot</h1>
+        <p>Ajukan pertanyaan atau minta ringkasan dari teks hasil OCR.</p>
+        <div id="chat-window" class="chat-window rounded">
+          <!-- Pesan chat akan ditambahkan di sini -->
+        </div>
+        <div id="loadingChat" class="mt-2 d-none">
+            <span class="text-muted"><i>Bot sedang mengetik...</i></span>
+        </div>
+        <form id="chatForm" class="mt-3">
+          <div class="input-group">
+            <input type="text" id="chat-input" class="form-control" placeholder="Ketik pesan Anda..." required />
+            <button class="btn btn-primary" type="submit">Kirim</button>
+          </div>
+        </form>
       </div>
-      <div class="mb-3">
-        <label for="file_id" class="form-label">Atau masukkan Telegram File ID</label>
-        <input type="text" class="form-control" id="file_id" name="file_id" />
-      </div>
-      <button type="submit" class="btn btn-primary">Proses OCR</button>
-    </form>
-
-    <div id="loading" class="mt-4 d-none">
-      <div class="spinner-border text-primary" role="status">
-        <span class="visually-hidden">Processing...</span>
-      </div>
-      <span class="ms-2">Sedang memproses, mohon tunggu...</span>
     </div>
-
-    <hr class="my-4" />
-
-    <h5>Hasil OCR:</h5>
-    <pre id="result" class="bg-white p-3 border rounded"></pre>
   </div>
 
   <script>
+    // --- Variabel Global & Inisialisasi ---
     const ocrForm = document.getElementById("ocrForm");
-    const loading = document.getElementById("loading");
+    const loadingOcr = document.getElementById("loadingOcr");
     const resultBox = document.getElementById("result");
+    const resultContainer = document.getElementById("result-container");
+    const askAiBtn = document.getElementById("ask-ai-btn");
 
+    const chatForm = document.getElementById("chatForm");
+    const chatInput = document.getElementById("chat-input");
+    const chatWindow = document.getElementById("chat-window");
+    const loadingChat = document.getElementById("loadingChat");
+
+    let sessionId = sessionStorage.getItem('sessionId');
+    if (!sessionId) {
+      sessionId = 'session_' + Date.now() + '_' + Math.random().toString(36).substring(2, 9);
+      sessionStorage.setItem('sessionId', sessionId);
+    }
+
+    // --- Logika Chatbot ---
+
+    /**
+     * Fungsi untuk menambahkan pesan ke UI chat.
+     * Merender Markdown untuk pesan dari bot.
+     * @param {string} message - Isi pesan.
+     * @param {string} sender - Pengirim pesan ('user' atau 'bot').
+     */
+    function addMessageToChat(message, sender) {
+      const messageDiv = document.createElement('div');
+      messageDiv.className = `chat-message ${sender}`;
+      
+      const bubbleDiv = document.createElement('div');
+      bubbleDiv.className = 'message-bubble';
+      
+      if (sender === 'bot') {
+        bubbleDiv.innerHTML = marked.parse(message);
+      } else {
+        bubbleDiv.textContent = message;
+      }
+      
+      messageDiv.appendChild(bubbleDiv);
+      chatWindow.appendChild(messageDiv);
+      chatWindow.scrollTop = chatWindow.scrollHeight;
+    }
+    
+    async function sendChatMessage(message) {
+        addMessageToChat(message, 'user');
+        chatInput.value = "";
+        loadingChat.classList.remove('d-none');
+
+        try {
+            const response = await fetch('/chat', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ sessionId, message })
+            });
+
+            if (!response.ok) {
+                const errorData = await response.json();
+                throw new Error(errorData.error || `HTTP Error: ${response.status}`);
+            }
+
+            const data = await response.json();
+            addMessageToChat(data.reply, 'bot');
+
+        } catch (err) {
+            addMessageToChat(`Error: ${err.message}`, 'bot');
+        } finally {
+            loadingChat.classList.add('d-none');
+        }
+    }
+
+    chatForm.addEventListener("submit", (e) => {
+      e.preventDefault();
+      const message = chatInput.value.trim();
+      if (message) {
+        sendChatMessage(message);
+      }
+    });
+
+    // --- Logika OCR ---
     ocrForm.addEventListener("submit", async function (e) {
       e.preventDefault();
-
-      const formData = new FormData();
-      const fileInput = document.getElementById("image");
+      
+      const fileInput = document.getElementById("file");
       const fileIdInput = document.getElementById("file_id").value;
 
+      resultBox.textContent = "";
+      askAiBtn.classList.add('d-none');
+      loadingOcr.classList.remove("d-none");
+
+      let requestBody;
+      let requestHeaders = {};
+
       if (fileInput.files.length > 0) {
-        formData.append("image", fileInput.files[0]);
+        const formData = new FormData();
+        formData.append("file", fileInput.files[0]);
+        requestBody = formData;
       } else if (fileIdInput) {
-        formData.append("file_id", fileIdInput);
+        requestBody = JSON.stringify({ file_id: fileIdInput });
+        requestHeaders['Content-Type'] = 'application/json';
       } else {
         alert("Pilih file atau masukkan File ID Telegram terlebih dahulu.");
+        loadingOcr.classList.add("d-none");
         return;
       }
-
-      // tampilkan loading
-      loading.classList.remove("d-none");
-      resultBox.textContent = "";
 
       try {
         const response = await fetch("/ocr", {
           method: "POST",
-          body: formData
+          headers: requestHeaders,
+          body: requestBody
         });
+        
+        if (!response.ok) {
+            const errorData = await response.json();
+            throw new Error(errorData.error || `HTTP error! status: ${response.status}`);
+        }
+
         const data = await response.json();
-        resultBox.textContent = data.text || data.error;
+        const ocrText = data.text || "Tidak ada teks yang terdeteksi.";
+        resultBox.textContent = ocrText;
+
+        if (data.text) {
+            askAiBtn.classList.remove('d-none');
+        }
       } catch (err) {
         resultBox.textContent = "Request failed: " + err.message;
       } finally {
-        loading.classList.add("d-none");
+        loadingOcr.classList.add("d-none");
+        ocrForm.reset();
       }
     });
+
+    askAiBtn.addEventListener('click', () => {
+        const ocrResult = resultBox.textContent.trim();
+        if (ocrResult && ocrResult !== "Tidak ada teks yang terdeteksi.") {
+            const prompt = `Berikut adalah teks hasil OCR. Tolong berikan insight atau ringkasan:\n\n"${ocrResult}"`;
+            sendChatMessage(prompt);
+        } else {
+            alert("Tidak ada hasil OCR untuk ditanyakan.");
+        }
+    });
+
+    addMessageToChat("Halo! Saya adalah asisten AI Anda. Anda bisa menanyakan apa saja atau meminta saya menganalisis teks dari hasil OCR.", 'bot');
+
   </script>
 </body>
 </html>
