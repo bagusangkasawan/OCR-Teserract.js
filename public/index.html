@@ -1,269 +1,295 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="id">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>OCR & Chatbot</title>
-  <link
-    href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css"
-    rel="stylesheet"
-  />
-  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+  <title>AIaaS untuk Ekspor Digital - Halaman Utama</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet"/>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
   <style>
-    .chat-window {
-      height: 400px;
-      overflow-y: auto;
-      border: 1px solid #ccc;
-      padding: 1rem;
-      background-color: #f8f9fa;
+    /* Palet Warna Baru */
+    :root {
+      --bg-dark-start: #111827; /* Abu-abu Gelap */
+      --bg-dark-end: #374151;   /* Abu-abu Sedang */
+      --primary-accent: #38bdf8; /* Biru Langit Cerah */
+      --primary-accent-hover: #7dd3fc; /* Biru Langit Lebih Terang */
+      --text-light: #e5e7eb;   /* Abu-abu Sangat Terang */
+      --text-heading: #ffffff;   /* Putih */
+      --card-bg: rgba(255, 255, 255, 0.05);
+      --border-color: rgba(255, 255, 255, 0.1);
     }
-    .chat-message {
-      margin-bottom: 1rem;
+
+    body {
+      background: linear-gradient(135deg, var(--bg-dark-start), var(--bg-dark-end));
+      color: var(--text-light);
+      font-family: 'Inter', 'Segoe UI', 'Helvetica Neue', Arial, sans-serif;
     }
-    .chat-message.user {
-      text-align: right;
+
+    .navbar {
+      background-color: rgba(17, 24, 39, 0.8);
+      backdrop-filter: blur(10px);
     }
-    .chat-message .message-bubble {
-      display: inline-block;
-      padding: 0.5rem 1rem;
+
+    .nav-link.active {
+      font-weight: bold;
+      color: #0dcaf0 !important;
+    }
+
+    .hero {
+      padding: 120px 0;
+      text-align: center;
+    }
+    .hero h1 {
+      font-size: 3.5rem;
+      font-weight: 700;
+      color: var(--text-heading);
+      text-shadow: 2px 2px 8px rgba(0,0,0,0.5);
+    }
+    .hero .highlight {
+      color: var(--primary-accent);
+    }
+    .hero p {
+      font-size: 1.3rem;
+      margin-top: 1rem;
+      max-width: 800px;
+      margin-left: auto;
+      margin-right: auto;
+    }
+    .btn-primary {
+      background-color: var(--primary-accent);
+      border: none;
+      padding: 0.8rem 2.5rem;
+      font-size: 1.1rem;
+      font-weight: 600;
+      margin-top: 2rem;
+      transition: all 0.3s ease;
+      box-shadow: 0 4px 20px rgba(56, 189, 248, 0.3);
+      color: var(--bg-dark-start);
+    }
+    .btn-primary:hover {
+      background-color: var(--primary-accent-hover);
+      transform: translateY(-3px);
+      box-shadow: 0 6px 25px rgba(125, 211, 252, 0.4);
+    }
+
+    .section-bg {
+      background-color: rgba(0, 0, 0, 0.2);
+      padding: 80px 0;
+      margin-top: 40px;
+      border-radius: 20px;
+    }
+    
+    .section-title {
+      text-align: center;
+      margin-bottom: 50px;
+    }
+
+    .section-title h2 {
+      font-size: 2.5rem;
+      font-weight: 700;
+      color: var(--text-heading);
+    }
+    
+    .section-title p {
+      color: var(--text-light);
+    }
+
+    .feature-card, .how-to-card {
+      display: flex;
+      flex-direction: column;
+      background-color: var(--card-bg);
+      border: 1px solid var(--border-color);
+      padding: 30px;
       border-radius: 15px;
-      max-width: 80%;
-      text-align: left;
+      text-align: center;
+      transition: all 0.3s ease;
+      height: 100%;
     }
-    .chat-message.user .message-bubble {
-      background-color: #0d6efd;
-      color: white;
+
+    .feature-card:hover, .how-to-card:hover {
+      transform: translateY(-10px);
+      background-color: rgba(255, 255, 255, 0.08);
+      border-color: var(--primary-accent);
     }
-    .chat-message.bot .message-bubble {
-      background-color: #e9ecef;
-      color: #212529;
+
+    .feature-card h3 {
+      min-height: 70px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      margin-bottom: 10px;
     }
-    .chat-message.bot .message-bubble h1,
-    .chat-message.bot .message-bubble h2,
-    .chat-message.bot .message-bubble h3 {
-        margin-top: 0.5rem;
-        margin-bottom: 0.5rem;
+
+    .feature-card p {
+      text-align: center;
+      margin: 0;
+      display: block;
     }
-    .chat-message.bot .message-bubble ul,
-    .chat-message.bot .message-bubble ol {
-        padding-left: 1.2rem;
+
+    .feature-icon {
+      font-size: 3.5rem;
+      color: var(--primary-accent);
+      margin-bottom: 20px;
+      line-height: 1;
     }
-    .chat-message.bot .message-bubble pre {
-        background-color: #343a40;
-        color: #f8f9fa;
-        padding: 0.5rem;
-        border-radius: 5px;
-        white-space: pre-wrap;
-        word-wrap: break-word;
+    
+    .how-to-card h4 {
+      color: var(--primary-accent-hover);
     }
-    #result-container {
-        position: relative;
-    }
-    #ask-ai-btn {
-        position: absolute;
-        top: 10px;
-        right: 10px;
+
+    .footer {
+      background-color: var(--bg-dark-start);
+      color: #9ca3af;
+      padding: 2rem 0;
+      margin-top: 60px;
+      text-align: center;
     }
   </style>
 </head>
-<body class="bg-light">
-  <div class="container py-5">
-    <div class="row">
-      <!-- Kolom OCR -->
-      <div class="col-md-6">
-        <h1 class="mb-4">1. Ekstrak Teks</h1>
-        <p>Unggah file Gambar (PNG, JPG) atau PDF untuk mengekstrak teks.</p>
-        <form id="ocrForm">
-          <div class="mb-3">
-            <label for="file" class="form-label">Upload Gambar atau PDF</label>
-            <input type="file" class="form-control" id="file" name="file" accept=".png,.jpg,.jpeg,.pdf" />
-          </div>
-           <div class="mb-3">
-            <label for="file_id" class="form-label">Atau masukkan Telegram File ID (Gambar atau PDF)</label>
-            <input type="text" class="form-control" id="file_id" name="file_id" />
-          </div>
-          <button type="submit" class="btn btn-primary">Proses OCR</button>
-        </form>
-        <div id="loadingOcr" class="mt-4 d-none">
-          <div class="spinner-border text-primary" role="status">
-            <span class="visually-hidden">Processing...</span>
-          </div>
-          <span class="ms-2">Sedang memproses OCR...</span>
-        </div>
-        <hr class="my-4" />
-        <h5>Hasil OCR:</h5>
-        <div id="result-container">
-            <pre id="result" class="bg-white p-3 border rounded" style="white-space: pre-wrap; word-wrap: break-word; min-height: 100px;"></pre>
-            <button id="ask-ai-btn" class="btn btn-sm btn-outline-primary d-none">Tanyakan ke AI</button>
-        </div>
-      </div>
+<body>
 
-      <!-- Kolom Chatbot -->
-      <div class="col-md-6">
-        <h1 class="mb-4">2. Chatbot</h1>
-        <p>Ajukan pertanyaan atau minta ringkasan dari teks hasil OCR.</p>
-        <div id="chat-window" class="chat-window rounded">
-          <!-- Pesan chat akan ditambahkan di sini -->
+  <!-- Navbar -->
+  <nav class="navbar navbar-expand-lg navbar-dark sticky-top">
+    <div class="container" id="home">
+      <a class="navbar-brand fw-bold" href="#"><i class="bi bi-robot me-2"></i> AIaaS Ekspor Digital</a>
+      <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+        <span class="navbar-toggler-icon"></span>
+      </button>
+      <div class="collapse navbar-collapse" id="navbarNav">
+        <ul class="navbar-nav ms-auto">
+          <li class="nav-item">
+            <a class="nav-link active" href="#">Beranda</a>
+          </li>
+          <li class="nav-item">
+            <a class="nav-link" href="#fitur">Fitur</a>
+          </li>
+          <li class="nav-item">
+            <a class="nav-link" href="#cara-penggunaan">Cara Penggunaan</a>
+          </li>
+           <li class="nav-item">
+            <a class="nav-link btn btn-outline-info ms-lg-2" href="main.html">Coba Aplikasi</a>
+          </li>
+        </ul>
+      </div>
+    </div>
+  </nav>
+
+  <!-- Hero Section -->
+  <section class="hero">
+    <div class="container">
+      <h1>Asisten Virtual <span class="highlight">Multi-Bahasa</span> untuk Bisnis Global Anda</h1>
+      <p>Percepat ekspor jasa digital Anda dengan asisten AI cerdas yang mampu memahami dokumen dalam berbagai bahasa dan memberikan analisis mendalam.</p>
+      <a href="main.html" class="btn btn-primary">Mulai Sekarang <i class="bi bi-arrow-right-circle-fill ms-2"></i></a>
+    </div>
+  </section>
+
+  <!-- Features Section -->
+  <div class="container" id="fitur">
+    <div class="section-bg">
+        <div class="section-title">
+            <h2>Solusi Cerdas untuk Pasar Global</h2>
+            <p>Alat canggih untuk mempermudah alur kerja ekspor digital Anda.</p>
         </div>
-        <div id="loadingChat" class="mt-2 d-none">
-            <span class="text-muted"><i>Bot sedang mengetik...</i></span>
-        </div>
-        <form id="chatForm" class="mt-3">
-          <div class="input-group">
-            <input type="text" id="chat-input" class="form-control" placeholder="Ketik pesan Anda..." required />
-            <button class="btn btn-primary" type="submit">Kirim</button>
+      <div class="row g-4">
+        <div class="col-md-4">
+          <div class="feature-card">
+            <div class="feature-icon"><i class="bi bi-translate"></i></div>
+            <h3>Asisten Virtual Multi-Bahasa</h3>
+            <p>Berinteraksi dengan AI yang memahami konteks dan nuansa dalam berbagai bahasa, menghilangkan hambatan komunikasi di pasar global.</p>
           </div>
-        </form>
+        </div>
+        <div class="col-md-4">
+          <div class="feature-card">
+            <div class="feature-icon"><i class="bi bi-file-earmark-check"></i></div>
+            <h3>Pemahaman Dokumen Cerdas</h3>
+            <p>Ekstrak, analisis, dan dapatkan ringkasan dari berbagai dokumen bisnis seperti kontrak, faktur, atau laporan secara instan dengan teknologi OCR & LLM.</p>
+          </div>
+        </div>
+        <div class="col-md-4">
+          <div class="feature-card">
+            <div class="feature-icon"><i class="bi bi-graph-up-arrow"></i></div>
+            <h3>Akselerasi Bisnis Digital</h3>
+            <p>Tingkatkan efisiensi operasional dan percepat pengambilan keputusan untuk memenangkan persaingan dalam ekspor layanan digital.</p>
+          </div>
+        </div>
       </div>
     </div>
   </div>
+  
+  <!-- How to Use Section -->
+  <div class="container mt-5 pt-5" id="cara-penggunaan">
+     <div class="section-title">
+        <h2>Bagaimana Cara Kerjanya?</h2>
+        <p>Hanya dalam 3 langkah mudah, Anda bisa langsung merasakan kemudahannya.</p>
+    </div>
+    <div class="row g-4 text-center">
+        <div class="col-md-4">
+            <div class="how-to-card">
+                <div class="feature-icon">1</div>
+                <h4>Unggah Dokumen</h4>
+                <p>Pilih bahasa dan unggah file gambar atau PDF Anda. Sistem kami siap memproses berbagai format dokumen.</p>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="how-to-card">
+                <div class="feature-icon">2</div>
+                <h4>Analisis oleh AI</h4>
+                <p>AI kami akan secara otomatis mengekstrak teks dan memahami konten dokumen Anda dalam hitungan detik.</p>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="how-to-card">
+                <div class="feature-icon">3</div>
+                <h4>Diskusikan & Dapatkan Insight</h4>
+                <p>Ajukan pertanyaan, minta ringkasan, atau terjemahan. Asisten Virtual Anda siap membantu mendapatkan wawasan berharga.</p>
+            </div>
+        </div>
+    </div>
+  </div>
 
+
+  <!-- Footer -->
+  <footer class="footer">
+    <div class="container">
+      <p>&copy; 2025 AIaaS Ekspor Digital. Seluruh Hak Cipta Dilindungi.</p>
+    </div>
+  </footer>
+  
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
   <script>
-    // --- Variabel Global & Inisialisasi ---
-    const ocrForm = document.getElementById("ocrForm");
-    const loadingOcr = document.getElementById("loadingOcr");
-    const resultBox = document.getElementById("result");
-    const resultContainer = document.getElementById("result-container");
-    const askAiBtn = document.getElementById("ask-ai-btn");
+    document.addEventListener("DOMContentLoaded", function () {
+      const navLinks = document.querySelectorAll(".navbar-nav .nav-link:not(.btn)");
 
-    const chatForm = document.getElementById("chatForm");
-    const chatInput = document.getElementById("chat-input");
-    const chatWindow = document.getElementById("chat-window");
-    const loadingChat = document.getElementById("loadingChat");
+      function setActiveLinkByHash() {
+        const hash = window.location.hash;
+        if (!hash) return;
 
-    let sessionId = sessionStorage.getItem('sessionId');
-    if (!sessionId) {
-      sessionId = 'session_' + Date.now() + '_' + Math.random().toString(36).substring(2, 9);
-      sessionStorage.setItem('sessionId', sessionId);
-    }
-
-    // --- Logika Chatbot ---
-
-    /**
-     * Fungsi untuk menambahkan pesan ke UI chat.
-     * Merender Markdown untuk pesan dari bot.
-     * @param {string} message - Isi pesan.
-     * @param {string} sender - Pengirim pesan ('user' atau 'bot').
-     */
-    function addMessageToChat(message, sender) {
-      const messageDiv = document.createElement('div');
-      messageDiv.className = `chat-message ${sender}`;
-      
-      const bubbleDiv = document.createElement('div');
-      bubbleDiv.className = 'message-bubble';
-      
-      if (sender === 'bot') {
-        bubbleDiv.innerHTML = marked.parse(message);
-      } else {
-        bubbleDiv.textContent = message;
-      }
-      
-      messageDiv.appendChild(bubbleDiv);
-      chatWindow.appendChild(messageDiv);
-      chatWindow.scrollTop = chatWindow.scrollHeight;
-    }
-    
-    async function sendChatMessage(message) {
-        addMessageToChat(message, 'user');
-        chatInput.value = "";
-        loadingChat.classList.remove('d-none');
-
-        try {
-            const response = await fetch('/chat', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ sessionId, message })
-            });
-
-            if (!response.ok) {
-                const errorData = await response.json();
-                throw new Error(errorData.error || `HTTP Error: ${response.status}`);
-            }
-
-            const data = await response.json();
-            addMessageToChat(data.reply, 'bot');
-
-        } catch (err) {
-            addMessageToChat(`Error: ${err.message}`, 'bot');
-        } finally {
-            loadingChat.classList.add('d-none');
+        const targetLink = document.querySelector(`.navbar-nav .nav-link[href="${hash}"]`);
+        if (targetLink) {
+          document.querySelectorAll(".navbar-nav .nav-link.active").forEach(link =>
+            link.classList.remove("active")
+          );
+          targetLink.classList.add("active");
         }
-    }
-
-    chatForm.addEventListener("submit", (e) => {
-      e.preventDefault();
-      const message = chatInput.value.trim();
-      if (message) {
-        sendChatMessage(message);
-      }
-    });
-
-    // --- Logika OCR ---
-    ocrForm.addEventListener("submit", async function (e) {
-      e.preventDefault();
-      
-      const fileInput = document.getElementById("file");
-      const fileIdInput = document.getElementById("file_id").value;
-
-      resultBox.textContent = "";
-      askAiBtn.classList.add('d-none');
-      loadingOcr.classList.remove("d-none");
-
-      let requestBody;
-      let requestHeaders = {};
-
-      if (fileInput.files.length > 0) {
-        const formData = new FormData();
-        formData.append("file", fileInput.files[0]);
-        requestBody = formData;
-      } else if (fileIdInput) {
-        requestBody = JSON.stringify({ file_id: fileIdInput });
-        requestHeaders['Content-Type'] = 'application/json';
-      } else {
-        alert("Pilih file atau masukkan File ID Telegram terlebih dahulu.");
-        loadingOcr.classList.add("d-none");
-        return;
       }
 
-      try {
-        const response = await fetch("/ocr", {
-          method: "POST",
-          headers: requestHeaders,
-          body: requestBody
+      navLinks.forEach(link => {
+        link.addEventListener("click", function () {
+          document.querySelectorAll(".navbar-nav .nav-link.active").forEach(link =>
+            link.classList.remove("active")
+          );
+          this.classList.add("active");
         });
-        
-        if (!response.ok) {
-            const errorData = await response.json();
-            throw new Error(errorData.error || `HTTP error! status: ${response.status}`);
-        }
+      });
 
-        const data = await response.json();
-        const ocrText = data.text || "Tidak ada teks yang terdeteksi.";
-        resultBox.textContent = ocrText;
+      setActiveLinkByHash();
 
-        if (data.text) {
-            askAiBtn.classList.remove('d-none');
-        }
-      } catch (err) {
-        resultBox.textContent = "Request failed: " + err.message;
-      } finally {
-        loadingOcr.classList.add("d-none");
-        ocrForm.reset();
-      }
+      window.addEventListener("hashchange", setActiveLinkByHash);
     });
-
-    askAiBtn.addEventListener('click', () => {
-        const ocrResult = resultBox.textContent.trim();
-        if (ocrResult && ocrResult !== "Tidak ada teks yang terdeteksi.") {
-            const prompt = `Berikut adalah teks hasil OCR. Tolong berikan insight atau ringkasan:\n\n"${ocrResult}"`;
-            sendChatMessage(prompt);
-        } else {
-            alert("Tidak ada hasil OCR untuk ditanyakan.");
-        }
-    });
-
-    addMessageToChat("Halo! Saya adalah asisten AI Anda. Anda bisa menanyakan apa saja atau meminta saya menganalisis teks dari hasil OCR.", 'bot');
-
   </script>
 </body>
 </html>

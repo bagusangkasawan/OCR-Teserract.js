@@ -1,3 +1,4 @@
+//index.js
 import express from "express";
 import cors from "cors";
 import { createWorker } from "tesseract.js";
@@ -7,6 +8,8 @@ import multer from "multer";
 import path from "path";
 import { promises as fs } from "fs";
 import { convert } from 'pdf-poppler';
+import swaggerUi from "swagger-ui-express";
+import swaggerJsdoc from "swagger-jsdoc";
 
 dotenv.config();
 
@@ -64,10 +67,71 @@ async function processPdf(pdfPath, worker) {
     }
 }
 
-
+/**
+ * @swagger
+ * /ocr:
+ *   post:
+ *     tags:
+ *       - OCR
+ *     summary: Melakukan OCR pada gambar atau PDF yang diunggah.
+ *     consumes:
+ *       - multipart/form-data
+ *     requestBody:
+ *       content:
+ *         multipart/form-data:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               file:
+ *                 type: string
+ *                 format: binary
+ *               lang:
+ *                 type: string
+ *                 example: ind
+ *               file_url:
+ *                 type: string
+ *               file_id:
+ *                 type: string
+ *     responses:
+ *       200:
+ *         description: Teks hasil OCR
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 text:
+ *                   type: string
+ */
 app.post("/ocr", upload.single("file"), async (req, res) => {
     let fileToClean = null;
-    const worker = await createWorker("ind");
+    let requestedLang = req.body.lang || "ind";
+
+    const trainedFiles = requestedLang.split("+");
+    const availableLangs = [];
+
+    for (const langCode of trainedFiles) {
+        const gzPath = path.resolve("tessdata", `${langCode}.traineddata.gz`);
+        const rawPath = path.resolve(`${langCode}.traineddata`);
+        try {
+            await fs.access(gzPath).catch(() => fs.access(rawPath));
+            availableLangs.push(langCode);
+        } catch {
+            console.warn(`Bahasa '${langCode}' tidak ditemukan di tessdata. Melewati...`);
+        }
+    }
+
+    let lang = "ind";
+    let finalLangs = ["ind"];
+    if (availableLangs.length > 0) {
+        lang = availableLangs.join("+");
+        finalLangs = availableLangs;
+    }
+
+    const worker = await createWorker(lang, 1, {
+        langPath: "./tessdata",
+        logger: m => console.log(m),
+    });
 
     try {
         let ocrText = "";
@@ -78,6 +142,28 @@ app.post("/ocr", upload.single("file"), async (req, res) => {
                 ocrText = await processPdf(fileToClean, worker);
             } else {
                 const { data: { text } } = await worker.recognize(fileToClean);
+                ocrText = text;
+            }
+        } else if (req.body.file_url) {
+            const fileUrl = req.body.file_url;
+
+            const response = await fetch(fileUrl);
+            if (!response.ok) {
+                throw new Error(`Gagal mengunduh file dari URL: ${response.statusText}`);
+            }
+
+            const contentType = response.headers.get('content-type');
+            const extension = contentType.includes('pdf') ? '.pdf' : '.png';
+            const tempFilePath = path.resolve('uploads', `url_file_${Date.now()}${extension}`);
+            fileToClean = tempFilePath;
+
+            const arrayBuffer = await response.arrayBuffer();
+            await fs.writeFile(tempFilePath, Buffer.from(arrayBuffer));
+
+            if (extension === '.pdf') {
+                ocrText = await processPdf(tempFilePath, worker);
+            } else {
+                const { data: { text } } = await worker.recognize(tempFilePath);
                 ocrText = text;
             }
         } else if (req.body.file_id) {
@@ -91,7 +177,7 @@ app.post("/ocr", upload.single("file"), async (req, res) => {
             if (filePath.toLowerCase().endsWith('.pdf')) {
                 const downloadResponse = await fetch(fileUrl);
                 if (!downloadResponse.ok) throw new Error(`Gagal mengunduh file dari Telegram: ${downloadResponse.statusText}`);
-                
+
                 const tempPdfPath = path.resolve('uploads', `telegram_${Date.now()}_${path.basename(filePath)}`);
                 fileToClean = tempPdfPath;
 
@@ -99,7 +185,6 @@ app.post("/ocr", upload.single("file"), async (req, res) => {
                 await fs.writeFile(tempPdfPath, Buffer.from(fileArrayBuffer));
 
                 ocrText = await processPdf(tempPdfPath, worker);
-
             } else {
                 const { data: { text } } = await worker.recognize(fileUrl);
                 ocrText = text;
@@ -117,12 +202,60 @@ app.post("/ocr", upload.single("file"), async (req, res) => {
         res.status(500).json({ error: "Proses OCR gagal. Pastikan file valid dan poppler-utils terinstall di server." });
     } finally {
         if (fileToClean) {
-            try { await fs.unlink(fileToClean); } catch (e) { console.error(`Gagal menghapus file utama ${fileToClean}:`, e); }
+            try {
+                await fs.unlink(fileToClean);
+            } catch (e) {
+                console.error(`Gagal menghapus file utama ${fileToClean}:`, e);
+            }
         }
+
+        setTimeout(async () => {
+            for (const langCode of finalLangs) {
+                const trainedFile = path.resolve(`${langCode}.traineddata`);
+                try {
+                    await fs.unlink(trainedFile);
+                    console.log(`File ${langCode}.traineddata berhasil dihapus`);
+                } catch (e) {
+                    if (e.code === 'EBUSY') {
+                        console.warn(`File ${langCode}.traineddata sedang digunakan. Coba lagi nanti.`);
+                    } else if (e.code !== 'ENOENT') {
+                        console.error(`Gagal menghapus file ${langCode}.traineddata:`, e);
+                    }
+                }
+            }
+        }, 2000);
     }
 });
 
-
+/**
+ * @swagger
+ * /chat:
+ *   post:
+ *     tags:
+ *       - Chatbot
+ *     summary: Mengirim pesan ke chatbot dan menerima balasan
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               sessionId:
+ *                 type: string
+ *               message:
+ *                 type: string
+ *     responses:
+ *       200:
+ *         description: Balasan dari chatbot
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 reply:
+ *                   type: string
+ */
 app.post("/chat", async (req, res) => {
     const { sessionId, message } = req.body;
 
@@ -162,6 +295,35 @@ app.post("/chat", async (req, res) => {
     }
 });
 
+const swaggerOptions = {
+  definition: {
+    openapi: "3.0.0",
+    info: {
+      title: "OCR & Chatbot API",
+      version: "1.0.0",
+      description: "API untuk OCR dokumen dengan Tesseract.js dan integrasi chatbot via n8n",
+    },
+    servers: [
+      {
+        url: process.env.SERVER_URL,
+      },
+    ],
+    tags: [
+      {
+        name: "Chatbot",
+        description: "Mengirim pesan ke chatbot atau meminta insight dokumen"
+      },
+      {
+        name: "OCR",
+        description: "Melakukan OCR pada gambar atau dokumen"
+      }
+    ],
+  },
+  apis: ["./index.js"],
+};
+
+const swaggerSpec = swaggerJsdoc(swaggerOptions);
+app.use("/api-docs", swaggerUi.serve, swaggerUi.setup(swaggerSpec));
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => console.log(`Server OCR berjalan di port ${PORT}`));
