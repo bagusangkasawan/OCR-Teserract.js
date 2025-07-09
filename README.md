@@ -3,35 +3,39 @@
 Proyek ini adalah REST API berbasis **Node.js + Express** yang dilengkapi dengan:
 
 * 🎯 **OCR (Optical Character Recognition)** menggunakan [Tesseract.js](https://tesseract.projectnaptha.com/) untuk membaca teks dari gambar dan PDF.
-* 🤖 **AI Chatbot** yang terhubung ke layanan eksternal seperti n8n untuk menjawab pertanyaan berdasarkan hasil OCR atau pesan umum.
+* 🤖 **AI Chatbot** yang terhubung ke layanan eksternal seperti n8n untuk menjawab pertanyaan berbasis teks.
+* 🔐 **Dukungan Otentikasi Ganda**: JWT dan API Key untuk fleksibilitas akses.
 
 ---
 
 ## 📦 Fitur Utama
 
 ✅ **Dukungan Multi-Format**
-    → Memproses file **gambar** (JPG, PNG), **PDF**, **URL eksternal**, dan **file Telegram (file\_id)**.
+→ Memproses file **gambar** (JPG, PNG), **PDF**, **URL eksternal**, dan **file Telegram (file\_id)**.
 
 ✅ **Deteksi Bahasa Dinamis**
-    → Pilih bahasa OCR dengan parameter `lang`, misalnya: `eng`, `ind`, atau `eng+ind`.
+→ Pilih bahasa OCR dengan parameter `lang`, misalnya: `eng`, `ind`, atau `eng+ind`.
 
 ✅ **Otomatisasi Konversi PDF**
-    → Mengubah PDF menjadi gambar sebelum OCR dijalankan (menggunakan `pdf-poppler`).
+→ Mengubah PDF menjadi gambar sebelum OCR dijalankan (menggunakan `pdf-poppler`).
 
 ✅ **Integrasi Telegram**
-    → Mendukung input melalui `file_id` dari bot Telegram.
+→ Mendukung input melalui `file_id` dari bot Telegram.
 
 ✅ **AI Chatbot Endpoint**
-    → `/chat` terhubung ke webhook n8n atau layanan lain untuk menjawab prompt pengguna.
+→ `/chat` terhubung ke webhook n8n atau layanan lain untuk menjawab prompt pengguna.
+
+✅ **Dukungan JWT & API Key**
+→ Autentikasi fleksibel: cocok untuk aplikasi web (JWT) dan integrasi eksternal (API Key).
 
 ✅ **Swagger API Docs**
-    → Dokumentasi interaktif tersedia di `/api-docs`.
+→ Dokumentasi interaktif tersedia di `/api-docs`.
 
 ✅ **Antarmuka Frontend**
-    → UI berbasis **Bootstrap** di `http://localhost:3000` untuk OCR & Chat.
+→ UI berbasis **Bootstrap** di `http://localhost:3000` untuk OCR & Chat.
 
 ✅ **Pembersihan Otomatis**
-    → File sementara (upload, traineddata) otomatis dihapus setelah proses selesai.
+→ File sementara (upload, traineddata) otomatis dihapus setelah proses selesai.
 
 ---
 
@@ -43,7 +47,9 @@ cd OCR-Teserract.js
 npm install
 ```
 
-> **Catatan:** Pastikan `Node.js` versi ≥ 18 dan `poppler-utils` telah terinstal di sistem Anda (`sudo apt install poppler-utils` di Linux).
+> **Catatan:**
+> Pastikan `Node.js` versi ≥ 18 dan `poppler-utils` telah terinstal di sistem Anda.
+> (Linux: `sudo apt install poppler-utils`)
 
 ---
 
@@ -54,6 +60,8 @@ TELEGRAM_TOKEN=YOUR_TELEGRAM_BOT_TOKEN
 N8N_CHAT_WEBHOOK_URL=https://n8n.domain/webhook/your_webhook
 SERVER_URL=http://localhost:3000
 PORT=3000
+JWT_SECRET=supersecretkey
+MONGO_URI=mongodb://localhost:27017/ocr_chat_api
 ```
 
 ---
@@ -67,45 +75,71 @@ npm start
 Akses:
 
 * UI: `http://localhost:3000`
-* API: `http://localhost:3000/ocr` dan `/chat`
-* Swagger: `http://localhost:3000/api-docs`
+* API (JWT): `/ocr`, `/chat`
+* API (API Key): `/api/ocr`, `/api/chat`
+* Swagger: [`http://localhost:3000/api-docs`](http://localhost:3000/api-docs)
 
 ---
 
 ## 🧪 Cara Menggunakan
 
-### 1️⃣ Via Browser (UI)
+### 1️⃣ Melalui UI (Frontend Web)
 
 1. Jalankan server
-2. Buka `http://localhost:3000`
-3. Unggah file (gambar/PDF) atau masukkan `file_id` Telegram
+2. Akses `http://localhost:3000`
+3. Unggah file atau input `file_id` Telegram
 4. Klik **Proses OCR**
-5. Klik **Tanyakan ke AI** untuk kirim hasil OCR ke chatbot
+5. Klik **Tanyakan ke AI** untuk kirim hasil ke chatbot
 
-### 2️⃣ Via API (Postman / HTTP client)
+---
 
-#### 🔍 OCR
+### 2️⃣ Melalui API
 
-**POST** `/ocr`
+#### 🔐 Registrasi & Login (JWT)
 
-##### Opsi 1: Upload file
+* `POST /register`
+* `POST /login` → hasilkan token JWT
 
-* `Content-Type`: `multipart/form-data`
-* Body:
+#### 📄 OCR
 
-  * `file`: upload file
-  * `lang` (opsional): contoh `eng`
+**Endpoint JWT:** `/ocr`
+**Endpoint API Key:** `/api/ocr`
 
-##### Opsi 2: URL eksternal
+**Headers (JWT):**
+
+```http
+Authorization: Bearer <JWT_TOKEN>
+```
+
+**Headers (API Key):**
+
+```http
+x-api-key: <API_KEY>
+```
+
+**Metode:**
+
+```http
+POST multipart/form-data
+```
+
+**Body Options:**
+
+1. Upload file:
+
+   * `file` (binary)
+   * `lang` (optional)
+
+2. URL eksternal:
 
 ```json
 {
-  "file_url": "https://example.com/sample.pdf",
+  "file_url": "https://example.com/file.pdf",
   "lang": "eng"
 }
 ```
 
-##### Opsi 3: Telegram `file_id`
+3. Telegram file:
 
 ```json
 {
@@ -113,17 +147,27 @@ Akses:
 }
 ```
 
-**Respons:**
+**Contoh Respons:**
 
 ```json
 {
-  "text": "Teks hasil OCR..."
+  "text": "Isi teks hasil OCR..."
 }
 ```
 
+---
+
 #### 💬 Chatbot
 
-**POST** `/chat`
+**Endpoint JWT:** `/chat`
+**Endpoint API Key:** `/api/chat`
+
+**Headers:**
+
+* JWT: `Authorization: Bearer <token>`
+* API Key: `x-api-key: <your-api-key>`
+
+**Body:**
 
 ```json
 {
@@ -136,15 +180,14 @@ Akses:
 
 ```json
 {
-  "reply": "Ini ringkasan dokumen Anda..."
+  "reply": "Ringkasan isi dokumen Anda..."
 }
 ```
 
 ---
 
-## 🧭 Dokumentasi API
+## 🧭 Dokumentasi Swagger
 
-Swagger tersedia di:
 👉 [`http://localhost:3000/api-docs`](http://localhost:3000/api-docs)
 
 ---
@@ -156,8 +199,8 @@ OCR-Teserract.js/
 ├── uploads/               # File upload sementara
 ├── public/
 │   └── index.html         # UI OCR & Chat
-├── tessdata/              # Model bahasa (compressed .traineddata.gz)
-├── index.js               # Entry point backend Express
+├── tessdata/              # Model bahasa (.traineddata.gz)
+├── index.js               # Entry point Express
 ├── package.json
 └── .env                   # Konfigurasi rahasia
 ```
@@ -166,9 +209,9 @@ OCR-Teserract.js/
 
 ## 💡 Tips
 
-* Anda dapat menambahkan model bahasa baru di folder `tessdata/` dalam format `.traineddata.gz`.
-* Gunakan kombinasi bahasa seperti `eng+ind` untuk dokumen campuran.
-* Jangan lupa set `N8N_CHAT_WEBHOOK_URL` untuk fitur AI Chatbot.
+* Tambahkan model bahasa baru di folder `tessdata/` dalam format `.traineddata.gz`.
+* Kombinasikan bahasa seperti `eng+ind` untuk OCR dokumen campuran.
+* Gunakan JWT untuk akses user-based & API Key untuk automasi.
 
 ---
 

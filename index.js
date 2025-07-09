@@ -1,4 +1,4 @@
-//index.js
+// index.js
 import express from "express";
 import cors from "cors";
 import { createWorker } from "tesseract.js";
@@ -6,22 +6,270 @@ import fetch from "node-fetch";
 import dotenv from "dotenv";
 import multer from "multer";
 import path from "path";
+import { fileURLToPath } from 'url';
 import { promises as fs } from "fs";
 import { convert } from 'pdf-poppler';
 import swaggerUi from "swagger-ui-express";
 import swaggerJsdoc from "swagger-jsdoc";
+import jwt from "jsonwebtoken";
+import bcrypt from "bcryptjs";
+import crypto from "crypto";
+import rateLimit from "express-rate-limit";
+import mongoose from "mongoose";
 
 dotenv.config();
 
+// --- Konfigurasi Dasar & Koneksi DB ---
 const app = express();
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+const MONGO_URI = process.env.MONGO_URI;
+const JWT_SECRET = process.env.JWT_SECRET;
+
+mongoose.connect(MONGO_URI)
+    .then(() => console.log("Berhasil terhubung ke MongoDB"))
+    .catch(err => console.error("Koneksi MongoDB gagal:", err));
+
+// --- Model Pengguna (User) ---
+const UserSchema = new mongoose.Schema(
+  {
+    username: {
+      type: String,
+      required: true,
+      unique: true,
+      trim: true,
+    },
+    email: {
+      type: String,
+      required: true,
+      unique: true,
+      trim: true,
+    },
+    password: {
+      type: String,
+      required: true,
+    },
+    apiKey: {
+      type: String,
+      required: true,
+      unique: true,
+    },
+  },
+  { timestamps: true }
+);
+
+const User = mongoose.model('User', UserSchema);
+
+// --- Middleware ---
 app.use(cors());
 app.use(express.json());
-app.use(express.static("public"));
+app.use(express.static(path.join(__dirname, "public")));
 
 const upload = multer({ dest: "uploads/" });
+
 const TELEGRAM_TOKEN = process.env.TELEGRAM_TOKEN;
 const N8N_CHAT_WEBHOOK_URL = process.env.N8N_CHAT_WEBHOOK_URL;
 
+const limiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 100,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: "Terlalu banyak request dari IP ini, silakan coba lagi setelah 15 menit",
+});
+
+app.use(limiter);
+
+const authenticateToken = (req, res, next) => {
+  const authHeader = req.headers['authorization'];
+  const token = authHeader && authHeader.split(' ')[1];
+
+  if (token == null) return res.sendStatus(401);
+
+  jwt.verify(token, JWT_SECRET, (err, decoded) => {
+    if (err) return res.sendStatus(403);
+    req.user = decoded;
+    next();
+  });
+};
+
+const authenticateApiKey = async (req, res, next) => {
+  const apiKey = req.headers['x-api-key'];
+
+  if (!apiKey) {
+    return res.status(401).json({ message: "API Key diperlukan" });
+  }
+
+  const user = await User.findOne({ apiKey });
+
+  if (!user) {
+    return res.status(403).json({ message: "API Key tidak valid" });
+  }
+
+  req.user = user;
+  next();
+};
+
+// --- Rute Halaman ---
+app.get('/', (req, res) => {
+    res.sendFile(path.join(__dirname, 'public', 'index.html'));
+});
+
+// --- Rute Otentikasi & User ---
+/**
+ * @swagger
+ * /register:
+ *   post:
+ *     tags:
+ *       - Otentikasi
+ *     summary: Mendaftarkan pengguna baru
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - username
+ *               - email
+ *               - password
+ *             properties:
+ *               username:
+ *                 type: string
+ *               email:
+ *                 type: string
+ *                 format: email
+ *               password:
+ *                 type: string
+ *                 format: password
+ *     responses:
+ *       201:
+ *         description: Registrasi berhasil
+ *       400:
+ *         description: Username atau email sudah digunakan
+ */
+app.post('/register', async (req, res) => {
+    try {
+        const { username, email, password } = req.body;
+        if (!username || !email || !password) {
+            return res.status(400).json({ message: "Username, email, dan password diperlukan" });
+        }
+
+        const existingUser = await User.findOne({ $or: [{ username }, { email }] });
+        if (existingUser) {
+            return res.status(400).json({ message: "Username atau email sudah digunakan" });
+        }
+
+        const hashedPassword = await bcrypt.hash(password, 10);
+        const newUser = new User({
+            username,
+            email,
+            password: hashedPassword,
+            apiKey: crypto.randomBytes(20).toString('hex')
+        });
+        await newUser.save();
+        res.status(201).json({ message: "Registrasi berhasil" });
+    } catch (error) {
+        res.status(500).json({ message: "Server error saat registrasi" });
+    }
+});
+
+/**
+ * @swagger
+ * /login:
+ *   post:
+ *     tags:
+ *       - Otentikasi
+ *     summary: Login pengguna
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - login
+ *               - password
+ *             properties:
+ *               login:
+ *                 type: string
+ *                 description: Username atau email
+ *               password:
+ *                 type: string
+ *                 format: password
+ *     responses:
+ *       200:
+ *         description: Login berhasil
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 token:
+ *                   type: string
+ *       400:
+ *         description: Kredensial tidak valid
+ */
+app.post('/login', async (req, res) => {
+    try {
+        const { login, password } = req.body;
+        const user = await User.findOne({ $or: [{ username: login }, { email: login }] });
+        if (!user) {
+            return res.status(400).json({ message: "Kredensial tidak valid" });
+        }
+        const isMatch = await bcrypt.compare(password, user.password);
+        if (!isMatch) {
+            return res.status(400).json({ message: "Kredensial tidak valid" });
+        }
+        const token = jwt.sign({ id: user._id, username: user.username }, JWT_SECRET, { expiresIn: '1d' });
+        res.json({ token });
+    } catch (error) {
+        res.status(500).json({ message: "Server error saat login" });
+    }
+});
+
+/**
+ * @swagger
+ * /api/me:
+ *   get:
+ *     tags:
+ *       - Pengguna
+ *     summary: Mendapatkan informasi pengguna saat ini
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Detail pengguna
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 _id:
+ *                   type: string
+ *                 username:
+ *                   type: string
+ *                 email:
+ *                   type: string
+ *                 apiKey:
+ *                   type: string
+ *       401:
+ *         description: Token tidak disediakan
+ *       403:
+ *         description: Token tidak valid
+ */
+app.get('/api/me', authenticateToken, async (req, res) => {
+    try {
+        const user = await User.findById(req.user.id).select('-password');
+        if (!user) return res.status(404).json({ message: "User tidak ditemukan" });
+        res.json(user);
+    } catch (error) {
+        res.status(500).json({ message: "Server error" });
+    }
+});
+
+// --- Fungsi Helper & Logika Inti ---
 /**
  * Memproses file PDF lokal, mengubahnya menjadi gambar, dan melakukan OCR.
  * @param {string} pdfPath - Path ke file PDF.
@@ -67,46 +315,10 @@ async function processPdf(pdfPath, worker) {
     }
 }
 
-/**
- * @swagger
- * /ocr:
- *   post:
- *     tags:
- *       - OCR
- *     summary: Melakukan OCR pada gambar atau PDF yang diunggah.
- *     consumes:
- *       - multipart/form-data
- *     requestBody:
- *       content:
- *         multipart/form-data:
- *           schema:
- *             type: object
- *             properties:
- *               file:
- *                 type: string
- *                 format: binary
- *               lang:
- *                 type: string
- *                 example: ind
- *               file_url:
- *                 type: string
- *               file_id:
- *                 type: string
- *     responses:
- *       200:
- *         description: Teks hasil OCR
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 text:
- *                   type: string
- */
-app.post("/ocr", upload.single("file"), async (req, res) => {
+const ocrAndChatLogic = {
+    performOcr: async (req) => {
     let fileToClean = null;
-    let requestedLang = req.body.lang || "ind";
-
+    const requestedLang = req.body.lang || "ind";
     const trainedFiles = requestedLang.split("+");
     const availableLangs = [];
 
@@ -114,19 +326,15 @@ app.post("/ocr", upload.single("file"), async (req, res) => {
         const gzPath = path.resolve("tessdata", `${langCode}.traineddata.gz`);
         const rawPath = path.resolve(`${langCode}.traineddata`);
         try {
-            await fs.access(gzPath).catch(() => fs.access(rawPath));
-            availableLangs.push(langCode);
+        await fs.access(gzPath).catch(() => fs.access(rawPath));
+        availableLangs.push(langCode);
         } catch {
-            console.warn(`Bahasa '${langCode}' tidak ditemukan di tessdata. Melewati...`);
+        console.warn(`Bahasa '${langCode}' tidak ditemukan di tessdata. Melewati...`);
         }
     }
 
-    let lang = "ind";
-    let finalLangs = ["ind"];
-    if (availableLangs.length > 0) {
-        lang = availableLangs.join("+");
-        finalLangs = availableLangs;
-    }
+    const finalLangs = availableLangs.length > 0 ? availableLangs : ["ind"];
+    const lang = finalLangs.join("+");
 
     const worker = await createWorker(lang, 1, {
         langPath: "./tessdata",
@@ -137,93 +345,143 @@ app.post("/ocr", upload.single("file"), async (req, res) => {
         let ocrText = "";
 
         if (req.file) {
-            fileToClean = path.resolve(req.file.path);
-            if (req.file.mimetype === 'application/pdf') {
-                ocrText = await processPdf(fileToClean, worker);
-            } else {
-                const { data: { text } } = await worker.recognize(fileToClean);
-                ocrText = text;
-            }
+        fileToClean = path.resolve(req.file.path);
+        ocrText = req.file.mimetype === 'application/pdf'
+            ? await processPdf(fileToClean, worker)
+            : (await worker.recognize(fileToClean)).data.text;
+
         } else if (req.body.file_url) {
-            const fileUrl = req.body.file_url;
+        const response = await fetch(req.body.file_url);
+        if (!response.ok) throw new Error(`Gagal unduh: ${response.statusText}`);
 
-            const response = await fetch(fileUrl);
-            if (!response.ok) {
-                throw new Error(`Gagal mengunduh file dari URL: ${response.statusText}`);
-            }
+        const extension = response.headers.get('content-type').includes('pdf') ? '.pdf' : '.png';
+        fileToClean = path.resolve('uploads', `url_${Date.now()}${extension}`);
+        await fs.writeFile(fileToClean, Buffer.from(await response.arrayBuffer()));
+        ocrText = extension === '.pdf'
+            ? await processPdf(fileToClean, worker)
+            : (await worker.recognize(fileToClean)).data.text;
 
-            const contentType = response.headers.get('content-type');
-            const extension = contentType.includes('pdf') ? '.pdf' : '.png';
-            const tempFilePath = path.resolve('uploads', `url_file_${Date.now()}${extension}`);
-            fileToClean = tempFilePath;
-
-            const arrayBuffer = await response.arrayBuffer();
-            await fs.writeFile(tempFilePath, Buffer.from(arrayBuffer));
-
-            if (extension === '.pdf') {
-                ocrText = await processPdf(tempFilePath, worker);
-            } else {
-                const { data: { text } } = await worker.recognize(tempFilePath);
-                ocrText = text;
-            }
         } else if (req.body.file_id) {
-            const tgResponse = await fetch(`https://api.telegram.org/bot${TELEGRAM_TOKEN}/getFile?file_id=${req.body.file_id}`);
-            const tgData = await tgResponse.json();
-            if (!tgData.ok) throw new Error("Gagal mendapatkan file dari Telegram");
+        const tgResponse = await fetch(`https://api.telegram.org/bot${TELEGRAM_TOKEN}/getFile?file_id=${req.body.file_id}`);
+        const tgData = await tgResponse.json();
+        if (!tgData.ok) throw new Error("Gagal mendapatkan file dari Telegram");
 
-            const filePath = tgData.result.file_path;
-            const fileUrl = `https://api.telegram.org/file/bot${TELEGRAM_TOKEN}/${filePath}`;
+        const filePath = tgData.result.file_path;
+        const fileUrl = `https://api.telegram.org/file/bot${TELEGRAM_TOKEN}/${filePath}`;
 
-            if (filePath.toLowerCase().endsWith('.pdf')) {
-                const downloadResponse = await fetch(fileUrl);
-                if (!downloadResponse.ok) throw new Error(`Gagal mengunduh file dari Telegram: ${downloadResponse.statusText}`);
+        if (filePath.toLowerCase().endsWith('.pdf')) {
+            const downloadResponse = await fetch(fileUrl);
+            if (!downloadResponse.ok) throw new Error(`Gagal mengunduh file dari Telegram: ${downloadResponse.statusText}`);
 
-                const tempPdfPath = path.resolve('uploads', `telegram_${Date.now()}_${path.basename(filePath)}`);
-                fileToClean = tempPdfPath;
-
-                const fileArrayBuffer = await downloadResponse.arrayBuffer();
-                await fs.writeFile(tempPdfPath, Buffer.from(fileArrayBuffer));
-
-                ocrText = await processPdf(tempPdfPath, worker);
-            } else {
-                const { data: { text } } = await worker.recognize(fileUrl);
-                ocrText = text;
-            }
+            fileToClean = path.resolve('uploads', `telegram_${Date.now()}_${path.basename(filePath)}`);
+            const fileArrayBuffer = await downloadResponse.arrayBuffer();
+            await fs.writeFile(fileToClean, Buffer.from(fileArrayBuffer));
+            ocrText = await processPdf(fileToClean, worker);
         } else {
-            return res.status(400).json({ error: "Tidak ada file yang diunggah atau file_id yang diberikan" });
+            const { data: { text } } = await worker.recognize(fileUrl);
+            ocrText = text;
         }
 
-        await worker.terminate();
-        res.json({ text: ocrText.trim() });
+        } else {
+        throw new Error("Tidak ada file yang diunggah atau file_id yang diberikan");
+        }
 
-    } catch (err) {
-        console.error("Error selama proses OCR:", err);
-        await worker.terminate();
-        res.status(500).json({ error: "Proses OCR gagal. Pastikan file valid dan poppler-utils terinstall di server." });
+        return { text: ocrText.trim() };
+
     } finally {
+        try { await worker.terminate(); } catch (e) { console.warn("Gagal terminate worker:", e); }
+
         if (fileToClean) {
-            try {
-                await fs.unlink(fileToClean);
-            } catch (e) {
-                console.error(`Gagal menghapus file utama ${fileToClean}:`, e);
-            }
+        try { await fs.unlink(fileToClean); } catch (e) {
+            console.error(`Gagal menghapus file utama ${fileToClean}:`, e);
+        }
         }
 
         setTimeout(async () => {
-            for (const langCode of finalLangs) {
-                const trainedFile = path.resolve(`${langCode}.traineddata`);
-                try {
-                    await fs.unlink(trainedFile);
-                    console.log(`File ${langCode}.traineddata berhasil dihapus`);
-                } catch (e) {
-                    if (e.code === 'EBUSY') {
-                        console.warn(`File ${langCode}.traineddata sedang digunakan. Coba lagi nanti.`);
-                    } else if (e.code !== 'ENOENT') {
-                        console.error(`Gagal menghapus file ${langCode}.traineddata:`, e);
-                    }
-                }
+        for (const langCode of finalLangs) {
+            const trainedFile = path.resolve(`${langCode}.traineddata`);
+            try {
+            await fs.unlink(trainedFile);
+            console.log(`File ${langCode}.traineddata berhasil dihapus`);
+            } catch (e) {
+            if (e.code === 'EBUSY') {
+                console.warn(`File ${langCode}.traineddata sedang digunakan. Coba lagi nanti.`);
+            } else if (e.code !== 'ENOENT') {
+                console.error(`Gagal menghapus file ${langCode}.traineddata:`, e);
             }
+            }
+        }
         }, 2000);
+    }
+    },
+
+  performChat: async (req) => {
+    const { sessionId, message } = req.body;
+    if (!sessionId || !message) return { status: 400, body: { error: "sessionId dan message diperlukan" } };
+    if (!N8N_CHAT_WEBHOOK_URL) return { status: 500, body: { error: "Konfigurasi server tidak lengkap." } };
+
+    const response = await fetch(N8N_CHAT_WEBHOOK_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ sessionId, message, user: req.user }),
+    });
+
+    if (!response.ok) throw new Error(`Webhook error: ${response.status}`);
+
+    const data = await response.json();
+    const reply = data[0]?.output;
+    if (!reply) throw new Error("Gagal parsing respons chatbot.");
+
+    return { status: 200, body: { reply } };
+  }
+};
+
+// --- Rute Aplikasi (Dilindungi) ---
+/**
+ * @swagger
+ * /ocr:
+ *   post:
+ *     tags:
+ *       - Aplikasi Web
+ *     summary: Melakukan OCR dari file atau URL (JWT)
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         multipart/form-data:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               file:
+ *                 type: string
+ *                 format: binary
+ *               file_url:
+ *                 type: string
+ *               lang:
+ *                 type: string
+ *                 description: Bahasa OCR (opsional, default "ind")
+ *     responses:
+ *       200:
+ *         description: Teks hasil OCR
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 text:
+ *                   type: string
+ *       400:
+ *         description: Tidak ada input file atau URL
+ *       500:
+ *         description: Proses OCR gagal
+ */
+app.post("/ocr", authenticateToken, upload.single("file"), async (req, res) => {
+    try {
+        const result = await ocrAndChatLogic.performOcr(req);
+        res.status(result.status).json(result.body);
+    } catch (err) {
+        res.status(500).json({ error: err.message || "Proses OCR gagal." });
     }
 });
 
@@ -232,14 +490,19 @@ app.post("/ocr", upload.single("file"), async (req, res) => {
  * /chat:
  *   post:
  *     tags:
- *       - Chatbot
- *     summary: Mengirim pesan ke chatbot dan menerima balasan
+ *       - Aplikasi Web
+ *     summary: Mengirim pesan ke chatbot (JWT)
+ *     security:
+ *       - bearerAuth: []
  *     requestBody:
  *       required: true
  *       content:
  *         application/json:
  *           schema:
  *             type: object
+ *             required:
+ *               - sessionId
+ *               - message
  *             properties:
  *               sessionId:
  *                 type: string
@@ -247,7 +510,7 @@ app.post("/ocr", upload.single("file"), async (req, res) => {
  *                 type: string
  *     responses:
  *       200:
- *         description: Balasan dari chatbot
+ *         description: Balasan chatbot
  *         content:
  *           application/json:
  *             schema:
@@ -255,75 +518,136 @@ app.post("/ocr", upload.single("file"), async (req, res) => {
  *               properties:
  *                 reply:
  *                   type: string
+ *       400:
+ *         description: sessionId atau message tidak ada
+ *       500:
+ *         description: Gagal berkomunikasi dengan layanan chat
  */
-app.post("/chat", async (req, res) => {
-    const { sessionId, message } = req.body;
-
-    if (!sessionId || !message) {
-        return res.status(400).json({ error: "sessionId dan message diperlukan" });
-    }
-
-    if (!N8N_CHAT_WEBHOOK_URL) {
-        console.error("N8N_CHAT_WEBHOOK_URL belum diatur di file .env");
-        return res.status(500).json({ error: "Konfigurasi sisi server tidak lengkap." });
-    }
-
+app.post("/chat", authenticateToken, async (req, res) => {
     try {
-        const response = await fetch(N8N_CHAT_WEBHOOK_URL, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ sessionId, message })
-        });
-
-        if (!response.ok) {
-            throw new Error(`Webhook n8n merespons dengan status: ${response.status}`);
-        }
-
-        const data = await response.json();
-        const reply = data[0]?.output;
-
-        if (!reply) {
-             console.error("Struktur respons dari n8n tidak terduga:", data);
-             throw new Error("Gagal mem-parsing respons dari chatbot.");
-        }
-
-        res.json({ reply });
-
+        const result = await ocrAndChatLogic.performChat(req);
+        res.status(result.status).json(result.body);
     } catch (err) {
-        console.error("Error saat menghubungi webhook chat:", err);
-        res.status(500).json({ error: "Gagal berkomunikasi dengan layanan chat." });
+        res.status(500).json({ error: err.message || "Gagal berkomunikasi dengan layanan chat." });
     }
 });
 
-const swaggerOptions = {
-  definition: {
-    openapi: "3.0.0",
-    info: {
-      title: "OCR & Chatbot API",
-      version: "1.0.0",
-      description: "API untuk OCR dokumen dengan Tesseract.js dan integrasi chatbot via n8n",
-    },
-    servers: [
-      {
-        url: process.env.SERVER_URL,
-      },
-    ],
-    tags: [
-      {
-        name: "Chatbot",
-        description: "Mengirim pesan ke chatbot atau meminta insight dokumen"
-      },
-      {
-        name: "OCR",
-        description: "Melakukan OCR pada gambar atau dokumen"
-      }
-    ],
-  },
-  apis: ["./index.js"],
-};
+/**
+ * @swagger
+ * /api/ocr:
+ *   post:
+ *     tags:
+ *       - API Eksternal
+ *     summary: Melakukan OCR dari file atau URL (API Key)
+ *     security:
+ *       - apiKeyAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         multipart/form-data:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               file:
+ *                 type: string
+ *                 format: binary
+ *               file_url:
+ *                 type: string
+ *               lang:
+ *                 type: string
+ *                 description: Bahasa OCR (opsional, default "ind")
+ *     responses:
+ *       200:
+ *         description: Teks hasil OCR
+ *       400:
+ *         description: Input tidak valid
+ *       401:
+ *         description: API Key tidak diberikan
+ *       403:
+ *         description: API Key tidak valid
+ *       500:
+ *         description: Proses OCR gagal
+ */
+app.post("/api/ocr", authenticateApiKey, upload.single("file"), async (req, res) => {
+    try {
+        const result = await ocrAndChatLogic.performOcr(req);
+        res.status(result.status).json(result.body);
+    } catch (err) {
+        res.status(500).json({ error: err.message || "Proses OCR gagal via API Key." });
+    }
+});
 
+/**
+ * @swagger
+ * /api/chat:
+ *   post:
+ *     tags:
+ *       - API Eksternal
+ *     summary: Mengirim pesan ke chatbot (API Key)
+ *     security:
+ *       - apiKeyAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - sessionId
+ *               - message
+ *             properties:
+ *               sessionId:
+ *                 type: string
+ *               message:
+ *                 type: string
+ *     responses:
+ *       200:
+ *         description: Balasan chatbot
+ *       400:
+ *         description: Input tidak lengkap
+ *       401:
+ *         description: API Key tidak diberikan
+ *       403:
+ *         description: API Key tidak valid
+ *       500:
+ *         description: Gagal chat
+ */
+app.post("/api/chat", authenticateApiKey, async (req, res) => {
+    try {
+        const result = await ocrAndChatLogic.performChat(req);
+        res.status(result.status).json(result.body);
+    } catch (err) {
+        res.status(500).json({ error: err.message || "Gagal chat via API Key." });
+    }
+});
+
+// --- Swagger & Server Start ---
+const swaggerOptions = {
+    definition: {
+      openapi: "3.0.0",
+      info: {
+        title: "AIaaS OCR & Chatbot API",
+        version: "3.0.0",
+        description: "API untuk OCR dan Chatbot dengan otentikasi JWT & API Key berbasis MongoDB",
+      },
+      servers: [{ url: process.env.SERVER_URL || 'http://localhost:3000' }],
+      tags: [
+        { name: "Otentikasi", description: "Endpoint untuk registrasi dan login" },
+        { name: "Pengguna", description: "Operasi terkait data pengguna" },
+        { name: "Aplikasi Web", description: "Endpoint yang digunakan oleh antarmuka web (JWT)" },
+        { name: "API Eksternal", description: "Endpoint untuk penggunaan via API Key" }
+      ],
+      components: {
+        securitySchemes: {
+          bearerAuth: { type: 'http', scheme: 'bearer', bearerFormat: 'JWT', description: "Masukkan token JWT" },
+          apiKeyAuth: { type: 'apiKey', in: 'header', name: 'x-api-key', description: "Masukkan API Key" }
+        }
+      },
+    },
+    apis: ["./index.js"],
+};
 const swaggerSpec = swaggerJsdoc(swaggerOptions);
 app.use("/api-docs", swaggerUi.serve, swaggerUi.setup(swaggerSpec));
 
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log(`Server OCR berjalan di port ${PORT}`));
+app.listen(PORT, () => console.log(`Server berjalan di port ${PORT}`));
