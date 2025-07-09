@@ -362,25 +362,24 @@ const ocrAndChatLogic = {
             : (await worker.recognize(fileToClean)).data.text;
 
         } else if (req.body.file_id) {
-        const tgResponse = await fetch(`https://api.telegram.org/bot${TELEGRAM_TOKEN}/getFile?file_id=${req.body.file_id}`);
-        const tgData = await tgResponse.json();
-        if (!tgData.ok) throw new Error("Gagal mendapatkan file dari Telegram");
+            const tgResponse = await fetch(`https://api.telegram.org/bot${TELEGRAM_TOKEN}/getFile?file_id=${req.body.file_id}`);
+            const tgData = await tgResponse.json();
+            if (!tgData.ok || !tgData.result?.file_path) throw new Error("Gagal mendapatkan file dari Telegram");
 
-        const filePath = tgData.result.file_path;
-        const fileUrl = `https://api.telegram.org/file/bot${TELEGRAM_TOKEN}/${filePath}`;
-
-        if (filePath.toLowerCase().endsWith('.pdf')) {
+            const filePath = tgData.result.file_path;
+            const fileUrl = `https://api.telegram.org/file/bot${TELEGRAM_TOKEN}/${filePath}`;
+            const extension = filePath.toLowerCase().endsWith('.pdf') ? '.pdf' : '.png';
+            
             const downloadResponse = await fetch(fileUrl);
             if (!downloadResponse.ok) throw new Error(`Gagal mengunduh file dari Telegram: ${downloadResponse.statusText}`);
 
-            fileToClean = path.resolve('uploads', `telegram_${Date.now()}_${path.basename(filePath)}`);
-            const fileArrayBuffer = await downloadResponse.arrayBuffer();
-            await fs.writeFile(fileToClean, Buffer.from(fileArrayBuffer));
-            ocrText = await processPdf(fileToClean, worker);
-        } else {
-            const { data: { text } } = await worker.recognize(fileUrl);
-            ocrText = text;
-        }
+            const fileBuffer = await downloadResponse.arrayBuffer();
+            fileToClean = path.resolve('uploads', `telegram_${Date.now()}${extension}`);
+            await fs.writeFile(fileToClean, Buffer.from(fileBuffer));
+
+            ocrText = extension === '.pdf'
+                ? await processPdf(fileToClean, worker)
+                : (await worker.recognize(fileToClean)).data.text;
 
         } else {
         throw new Error("Tidak ada file yang diunggah atau file_id yang diberikan");
@@ -479,7 +478,7 @@ const ocrAndChatLogic = {
 app.post("/ocr", authenticateToken, upload.single("file"), async (req, res) => {
     try {
         const result = await ocrAndChatLogic.performOcr(req);
-        res.status(result.status).json(result.body);
+        res.status(200).json(result);
     } catch (err) {
         res.status(500).json({ error: err.message || "Proses OCR gagal." });
     }
@@ -526,7 +525,7 @@ app.post("/ocr", authenticateToken, upload.single("file"), async (req, res) => {
 app.post("/chat", authenticateToken, async (req, res) => {
     try {
         const result = await ocrAndChatLogic.performChat(req);
-        res.status(result.status).json(result.body);
+        res.status(200).json(result);
     } catch (err) {
         res.status(500).json({ error: err.message || "Gagal berkomunikasi dengan layanan chat." });
     }
@@ -571,7 +570,7 @@ app.post("/chat", authenticateToken, async (req, res) => {
 app.post("/api/ocr", authenticateApiKey, upload.single("file"), async (req, res) => {
     try {
         const result = await ocrAndChatLogic.performOcr(req);
-        res.status(result.status).json(result.body);
+        res.status(200).json(result);
     } catch (err) {
         res.status(500).json({ error: err.message || "Proses OCR gagal via API Key." });
     }
@@ -615,7 +614,7 @@ app.post("/api/ocr", authenticateApiKey, upload.single("file"), async (req, res)
 app.post("/api/chat", authenticateApiKey, async (req, res) => {
     try {
         const result = await ocrAndChatLogic.performChat(req);
-        res.status(result.status).json(result.body);
+        res.status(200).json(result);
     } catch (err) {
         res.status(500).json({ error: err.message || "Gagal chat via API Key." });
     }
