@@ -431,7 +431,7 @@ const ocrAndChatLogic = {
     const reply = data[0]?.output;
     if (!reply) throw new Error("Gagal parsing respons chatbot.");
 
-    return { status: 200, body: { reply } };
+    return { reply };
   }
 };
 
