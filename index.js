@@ -66,6 +66,16 @@ app.use(cors());
 app.use(express.json());
 app.use(express.static(path.join(__dirname, "public")));
 
+// Rute untuk halaman utama (/) yang menampilkan index.html
+app.get('/', (req, res) => {
+    res.sendFile(path.join(__dirname, 'public', 'index.html'));
+});
+
+// Rute kustom untuk /feature yang menampilkan main.html
+app.get('/feature', (req, res) => {
+    res.sendFile(path.join(__dirname, 'public', 'main.html'));
+});
+
 const upload = multer({ dest: "uploads/" });
 
 const TELEGRAM_TOKEN = process.env.TELEGRAM_TOKEN;
@@ -110,11 +120,6 @@ const authenticateApiKey = async (req, res, next) => {
   req.user = user;
   next();
 };
-
-// --- Rute Halaman ---
-app.get('/', (req, res) => {
-    res.sendFile(path.join(__dirname, 'public', 'index.html'));
-});
 
 // --- Rute Otentikasi & User ---
 /**

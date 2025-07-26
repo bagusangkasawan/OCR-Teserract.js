@@ -1,4 +1,3 @@
-<!-- public/index.html -->
 <!DOCTYPE html>
 <html lang="id">
 <head>
@@ -141,6 +140,19 @@
     .how-to-card h4 {
       color: var(--primary-accent-hover);
     }
+    
+    /* Styles for the new currency table */
+    .table {
+        --bs-table-bg: transparent;
+        --bs-table-border-color: var(--border-color);
+        --bs-table-hover-bg: rgba(255, 255, 255, 0.08);
+        --bs-table-hover-color: var(--text-light);
+    }
+
+    /* Override text-align for the currency card */
+    #kurs .feature-card {
+        text-align: left;
+    }
 
     .footer {
       background-color: var(--bg-dark-start);
@@ -156,7 +168,7 @@
   <!-- Navbar -->
   <nav class="navbar navbar-expand-lg navbar-dark sticky-top">
     <div class="container" id="home">
-      <a class="navbar-brand fw-bold" href="#"><i class="bi bi-robot me-2"></i> AIaaS Ekspor Digital</a>
+      <a class="navbar-brand fw-bold" href="/"><i class="bi bi-robot me-2"></i> XportMate</a>
       <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
         <span class="navbar-toggler-icon"></span>
       </button>
@@ -171,8 +183,12 @@
           <li class="nav-item">
             <a class="nav-link" href="#cara-penggunaan">Cara Penggunaan</a>
           </li>
-           <li class="nav-item">
-            <a class="nav-link btn btn-outline-info ms-lg-2" href="main.html">Coba Aplikasi</a>
+          <!-- New Nav Link for Currency Section -->
+          <li class="nav-item">
+            <a class="nav-link" href="#kurs">Kurs</a>
+          </li>
+          <li class="nav-item">
+            <a class="nav-link btn btn-outline-info ms-lg-2" href="/feature">Coba Aplikasi</a>
           </li>
         </ul>
       </div>
@@ -184,7 +200,7 @@
     <div class="container">
       <h1>Asisten Virtual <span class="highlight">Multi-Bahasa</span> untuk Bisnis Global Anda</h1>
       <p>Percepat ekspor jasa digital Anda dengan asisten AI cerdas yang mampu memahami dokumen dalam berbagai bahasa dan memberikan analisis mendalam.</p>
-      <a href="main.html" class="btn btn-primary">Mulai Sekarang <i class="bi bi-arrow-right-circle-fill ms-2"></i></a>
+      <a href="/feature" class="btn btn-primary">Mulai Sekarang <i class="bi bi-arrow-right-circle-fill ms-2"></i></a>
     </div>
   </section>
 
@@ -252,6 +268,39 @@
     </div>
   </div>
 
+  <!-- New Currency Rates Section -->
+  <div class="container mt-5 pt-5" id="kurs">
+    <div class="section-title">
+        <h2>Kurs Terkini</h2>
+        <p>Nilai tukar mata uang asing terhadap Rupiah (IDR) berdasarkan data terbaru.</p>
+    </div>
+    <div class="row justify-content-center">
+        <div class="col-lg-8">
+            <div class="feature-card p-4">
+                 <p class="text-center mb-3 small text-white-50">Data diperbarui pada: <span id="update-date">-</span></p>
+                <div class="table-responsive">
+                    <table class="table table-dark table-hover mb-0">
+                        <thead>
+                            <tr>
+                                <th scope="col" style="width: 60%;">Mata Uang</th>
+                                <th scope="col" class="text-end" style="width: 40%;">Nilai (IDR)</th>
+                            </tr>
+                        </thead>
+                        <tbody id="currency-table-body">
+                            <!-- Rows will be inserted here by JavaScript -->
+                        </tbody>
+                    </table>
+                </div>
+                 <div id="loading-spinner" class="text-center mt-3">
+                    <div class="spinner-border text-info" role="status">
+                        <span class="visually-hidden">Loading...</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+  </div>
+
 
   <!-- Footer -->
   <footer class="footer">
@@ -263,18 +312,22 @@
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
   <script>
     document.addEventListener("DOMContentLoaded", function () {
+      // --- Existing Navbar Logic ---
       const navLinks = document.querySelectorAll(".navbar-nav .nav-link:not(.btn)");
 
       function setActiveLinkByHash() {
-        const hash = window.location.hash;
-        if (!hash) return;
-
+        const hash = window.location.hash || '#'; // Default to '#' for home
         const targetLink = document.querySelector(`.navbar-nav .nav-link[href="${hash}"]`);
+        
+        document.querySelectorAll(".navbar-nav .nav-link.active").forEach(link =>
+          link.classList.remove("active")
+        );
+
         if (targetLink) {
-          document.querySelectorAll(".navbar-nav .nav-link.active").forEach(link =>
-            link.classList.remove("active")
-          );
           targetLink.classList.add("active");
+        } else {
+          // Fallback to home if hash doesn't match any link
+          document.querySelector('.navbar-nav .nav-link[href="#"]').classList.add("active");
         }
       }
 
@@ -287,9 +340,94 @@
         });
       });
 
+      // Set initial active link on page load
       setActiveLinkByHash();
-
+      // Update active link when hash changes
       window.addEventListener("hashchange", setActiveLinkByHash);
+
+
+      // --- New Currency Fetching Logic ---
+      async function fetchRates() {
+          const currencyTableBody = document.getElementById('currency-table-body');
+          const loadingSpinner = document.getElementById('loading-spinner');
+          const updateDateEl = document.getElementById('update-date');
+
+          if (!currencyTableBody || !loadingSpinner || !updateDateEl) return;
+
+          // List of major currencies to display
+          const majorCurrencies = ['USD', 'EUR', 'JPY', 'GBP', 'AUD', 'SGD', 'CNY'];
+          const currencyNames = {
+              'USD': 'Dolar Amerika Serikat',
+              'EUR': 'Euro',
+              'JPY': 'Yen Jepang',
+              'GBP': 'Pound Sterling Inggris',
+              'AUD': 'Dolar Australia',
+              'SGD': 'Dolar Singapura',
+              'CNY': 'Yuan Tiongkok'
+          };
+
+          try {
+              loadingSpinner.style.display = 'block';
+              currencyTableBody.innerHTML = ''; // Clear previous data
+
+              // Create an array of fetch promises, one for each currency
+              const fetchPromises = majorCurrencies.map(currency =>
+                  fetch(`https://api.frankfurter.app/latest?from=${currency}&to=IDR`)
+                  .then(response => {
+                      if (!response.ok) {
+                          console.error(`Gagal mengambil data untuk ${currency}. Status: ${response.status}`);
+                          return null; // Return null for failed requests to not break Promise.all
+                      }
+                      return response.json();
+                  })
+              );
+
+              const results = await Promise.all(fetchPromises);
+              
+              const validResults = results.filter(r => r !== null);
+
+              if (validResults.length === 0) {
+                  throw new Error("Semua permintaan API untuk kurs mata uang gagal.");
+              }
+
+              // Update the date using the date from the first successful response
+              const latestDate = validResults[0].date;
+              if (updateDateEl && latestDate) {
+                  const formattedDate = new Date(latestDate).toLocaleDateString('id-ID', {
+                      year: 'numeric', month: 'long', day: 'numeric', timeZone: 'UTC'
+                  });
+                  updateDateEl.textContent = `${formattedDate} (sumber: frankfurter.app)`;
+              }
+
+              // Populate the table with the fetched rates
+              validResults.forEach(data => {
+                  if (data && data.rates && data.rates.IDR) {
+                      const currency = data.base;
+                      const rate = data.rates.IDR;
+                      const row = document.createElement('tr');
+                      // Format the rate to Indonesian locale with 2 decimal places
+                      const formattedRate = rate.toLocaleString('id-ID', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+                      
+                      row.innerHTML = `
+                          <td><span class="fw-bold">${currency}</span> (${currencyNames[currency] || 'N/A'})</td>
+                          <td class="text-end font-monospace">${formattedRate}</td>
+                      `;
+                      currencyTableBody.appendChild(row);
+                  }
+              });
+
+          } catch (error) {
+              console.error("Gagal mengambil data kurs:", error);
+              currencyTableBody.innerHTML = `<tr><td colspan="2" class="text-center text-danger">Gagal memuat data kurs. Silakan coba lagi nanti.</td></tr>`;
+          } finally {
+              loadingSpinner.style.display = 'none'; // Hide spinner regardless of success or failure
+          }
+      }
+
+      // Check if the currency section exists on the page before fetching
+      if (document.getElementById('kurs')) {
+          fetchRates();
+      }
     });
   </script>
 </body>
